@@ -40,6 +40,7 @@ const env = {
   port: Number(readEnv(["PORT"], "10000")),
   apiPrefix: readEnv(["API_PREFIX"], "/api/v1"),
   clientOrigin: readEnv(["CLIENT_ORIGIN"], "*"),
+  clientOrigins: readEnv(["CLIENT_ORIGINS"], ""),
   mongoUri: readEnv(["MONGODB_URI"]),
   requestTimeoutMs: Number(readEnv(["REQUEST_TIMEOUT_MS"], "15000")),
   openAlexBaseUrl: readEnv(["OPENALEX_BASE_URL"], "https://api.openalex.org"),
@@ -132,11 +133,17 @@ function validateEnv() {
 }
 
 function buildEnvSummary() {
+  const normalizedClientOrigins = env.clientOrigins
+    .split(",")
+    .map((origin) => origin.trim())
+    .filter(Boolean);
+
   return {
     nodeEnv: env.nodeEnv,
     port: env.port,
     apiPrefix: env.apiPrefix,
     clientOriginConfigured: Boolean(env.clientOrigin),
+    clientOriginsConfigured: normalizedClientOrigins.length,
     requestTimeoutMs: env.requestTimeoutMs,
     integrations: {
       mongodbConfigured: Boolean(env.mongoUri),
