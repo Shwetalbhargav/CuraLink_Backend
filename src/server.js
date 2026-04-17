@@ -1,9 +1,30 @@
-require("dotenv").config();
+const { createApp } = require("./app");
+const { env, validateEnv } = require("./config/env");
+const { connectToDatabase } = require("./config/database");
+const { logger } = require("./config/logger");
 
-const app = require("./app");
+async function bootstrap() {
+  const envValidation = validateEnv();
 
-const port = Number(process.env.PORT) || 10000;
+  if (!envValidation.ok) {
+    logger.error("Environment validation failed", envValidation.errors);
+    process.exit(1);
+  }
 
-app.listen(port, () => {
-  console.log(`Server running on port ${port}`);
+  if (envValidation.warnings.length) {
+    logger.warn("Environment validation warnings", envValidation.warnings);
+  }
+
+  await connectToDatabase();
+
+  const app = createApp();
+
+  app.listen(env.port, () => {
+    logger.info(`Server running on port ${env.port}`);
+  });
+}
+
+bootstrap().catch((error) => {
+  logger.error("Failed to start server", error);
+  process.exit(1);
 });
