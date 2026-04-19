@@ -10,10 +10,11 @@ const clinicalTrialsClient = {
     };
   },
 
-  async searchTrials({ disease, query, pageSize = 5, status }) {
+  async searchTrials({ disease, query, pageSize = 5, status, location }) {
     const payload = await getJson(env.clinicalTrialsBaseUrl, "studies", {
       "query.cond": disease,
       "query.term": query,
+      "query.locn": normalizeLocationQuery(location),
       "filter.overallStatus": normalizeStatus(status),
       pageSize,
       format: "json",
@@ -26,7 +27,9 @@ const clinicalTrialsClient = {
       const design = protocol.designModule || {};
       const contacts = protocol.contactsLocationsModule || {};
       const eligibility = protocol.eligibilityModule || {};
-      const firstLocation = contacts.locations?.[0] || {};
+      const allLocations = Array.isArray(contacts.locations) ? contacts.locations : [];
+      const firstLocation = allLocations[0] || {};
+      const normalizedLocations = allLocations.map(formatLocation).filter(Boolean);
 
       return {
         id: study.protocolSection?.identificationModule?.nctId || `trial-${index}`,
@@ -41,7 +44,8 @@ const clinicalTrialsClient = {
         status: status.overallStatus || "UNKNOWN",
         phase: Array.isArray(design.phases) ? design.phases.join(", ") : "",
         studyType: design.studyType || "",
-        location: [firstLocation.city, firstLocation.state, firstLocation.country].filter(Boolean).join(", "),
+        location: formatLocation(firstLocation),
+        locations: normalizedLocations,
         contact: firstLocation.contacts?.[0]?.email || firstLocation.contacts?.[0]?.phone || "",
         eligibility: eligibility.eligibilityCriteria || "",
         tags: deriveTrialTags({
@@ -62,6 +66,11 @@ function normalizeStatus(status) {
   return value || undefined;
 }
 
+function normalizeLocationQuery(location) {
+  const value = String(location || "").trim();
+  return value || undefined;
+}
+
 function extractYear(dateString) {
   if (!dateString) {
     return null;
@@ -69,6 +78,10 @@ function extractYear(dateString) {
 
   const value = String(dateString).slice(0, 4);
   return Number.isNaN(Number(value)) ? null : Number(value);
+}
+
+function formatLocation(location = {}) {
+  return [location.city, location.state, location.country].filter(Boolean).join(", ");
 }
 
 function deriveTrialTags({ status, phase, studyType, text }) {

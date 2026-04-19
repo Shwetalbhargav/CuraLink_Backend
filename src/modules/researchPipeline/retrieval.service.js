@@ -99,6 +99,7 @@ async function retrieveClinicalTrials(queries, context, expandedQuery) {
         query,
         pageSize: DEFAULT_CANDIDATE_DEPTH.clinicalTrialsPageSize,
         status: context.status,
+        location: context.location || expandedQuery.filters?.location,
       })
     )
   );

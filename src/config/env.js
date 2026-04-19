@@ -59,6 +59,7 @@ const env = {
   ),
   ollamaBaseUrl: readEnv(["OLLAMA_BASE_URL"], "http://localhost:11434"),
   ollamaModel: readEnv(["OLLAMA_MODEL"]),
+  ollamaRequired: readEnv(["OLLAMA_REQUIRED"], "false").toLowerCase() === "true",
   pythonExecutable: readEnv(["PYTHON_EXECUTABLE"], "python"),
   pythonRenderTimeoutMs: Number(readEnv(["PYTHON_RENDER_TIMEOUT_MS"], "20000")),
   pythonRendererScript: readEnv(
@@ -89,6 +90,10 @@ function validateEnv() {
 
   if (env.ollamaBaseUrl) {
     validateUrl(env.ollamaBaseUrl, "OLLAMA_BASE_URL", errors);
+  }
+
+  if (env.ollamaRequired && !env.ollamaModel) {
+    errors.push("OLLAMA_REQUIRED is true but OLLAMA_MODEL is not set.");
   }
 
   if (!Number.isFinite(env.requestTimeoutMs) || env.requestTimeoutMs < 1000) {
@@ -122,6 +127,10 @@ function validateEnv() {
 
   if (env.ollamaBaseUrl && !env.ollamaModel) {
     warnings.push("OLLAMA_MODEL is not set. Reasoning will fall back to deterministic templating.");
+  }
+
+  if (!env.ollamaRequired) {
+    warnings.push("OLLAMA_REQUIRED is false. Deployed reasoning may still fall back if Ollama is unavailable.");
   }
 
   return {
@@ -164,6 +173,7 @@ function buildEnvSummary() {
       ollama: {
         baseUrlConfigured: Boolean(env.ollamaBaseUrl),
         modelConfigured: Boolean(env.ollamaModel),
+        required: env.ollamaRequired,
       },
       python: {
         executableConfigured: Boolean(env.pythonExecutable),

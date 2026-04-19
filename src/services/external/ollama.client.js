@@ -38,12 +38,43 @@ const ollamaClient = {
 
     const payload = await response.json();
 
-    try {
-      return JSON.parse(payload.response || "{}");
-    } catch (error) {
-      throw new Error("Ollama returned invalid JSON");
-    }
+    return parseStructuredOllamaResponse(payload.response || "");
   },
 };
+
+function parseStructuredOllamaResponse(responseText) {
+  const normalized = String(responseText || "").trim();
+
+  if (!normalized) {
+    throw new Error("Ollama returned an empty response");
+  }
+
+  try {
+    return JSON.parse(normalized);
+  } catch (error) {
+    const extracted = extractJsonObject(normalized);
+
+    if (!extracted) {
+      throw new Error("Ollama returned invalid JSON");
+    }
+
+    try {
+      return JSON.parse(extracted);
+    } catch (parseError) {
+      throw new Error("Ollama returned invalid JSON");
+    }
+  }
+}
+
+function extractJsonObject(value) {
+  const start = value.indexOf("{");
+  const end = value.lastIndexOf("}");
+
+  if (start === -1 || end === -1 || end <= start) {
+    return "";
+  }
+
+  return value.slice(start, end + 1);
+}
 
 module.exports = { ollamaClient };

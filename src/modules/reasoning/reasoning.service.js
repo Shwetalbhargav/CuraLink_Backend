@@ -8,6 +8,7 @@ const reasoningService = {
       provider: env.ollamaBaseUrl && env.ollamaModel ? "ollama" : "fallback-template",
       configured: Boolean(env.ollamaBaseUrl && env.ollamaModel),
       model: env.ollamaModel || null,
+      required: env.ollamaRequired,
       responseShape: [
         "summary",
         "conditionOverview",
@@ -25,14 +26,14 @@ const reasoningService = {
     const greeting = buildGreeting(context);
     const overview = buildConditionOverview(context, evidence);
     const sources = [...evidence.publications, ...evidence.clinicalTrials].map(formatSourceAttribution);
-    const llmAnswer = await generateWithOllama({
+    const reasoningRun = await generateWithOllama({
       context,
       evidence,
       greeting,
       overview,
       sources,
     });
-    const normalizedLlmAnswer = normalizeLlmAnswer(llmAnswer, sources);
+    const normalizedLlmAnswer = normalizeLlmAnswer(reasoningRun.output, sources);
     const fallbackAnswer = buildFallbackAnswer({ context, evidence, greeting, overview });
     const answerPayload = mergeAnswerPayload(fallbackAnswer, normalizedLlmAnswer);
     const careAccess = buildCareAccess(evidence.clinicalTrials);
@@ -48,6 +49,12 @@ const reasoningService = {
         careAccess,
       },
       sources,
+      reasoning: {
+        provider: reasoningRun.provider,
+        model: env.ollamaModel || null,
+        fallbackUsed: reasoningRun.provider !== "ollama",
+        error: reasoningRun.error || null,
+      },
       safety: {
         medicalAdviceBoundary:
           "This response summarizes research and care-access options in real time. It is not a diagnosis or a personal treatment prescription.",
@@ -59,12 +66,36 @@ const reasoningService = {
 };
 
 async function generateWithOllama({ context, evidence, greeting, overview, sources }) {
+  if (!env.ollamaBaseUrl || !env.ollamaModel) {
+    if (env.ollamaRequired) {
+      throw new Error("Ollama is required but not configured");
+    }
+
+    return {
+      provider: "fallback-template",
+      output: null,
+      error: "Ollama is not configured",
+    };
+  }
+
   try {
-    return await ollamaClient.generateStructuredAnswer({
+    return {
+      provider: "ollama",
+      output: await ollamaClient.generateStructuredAnswer({
       prompt: buildReasoningPrompt({ context, evidence, greeting, overview, sources }),
-    });
+      }),
+      error: null,
+    };
   } catch (error) {
-    return null;
+    if (env.ollamaRequired) {
+      throw new Error(`Ollama reasoning failed: ${error.message}`);
+    }
+
+    return {
+      provider: "fallback-template",
+      output: null,
+      error: error.message,
+    };
   }
 }
 

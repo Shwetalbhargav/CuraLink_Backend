@@ -67,12 +67,17 @@ function scoreEvidence(item, context) {
       : 0;
   const sourceCredibilityScore = sourceWeight(item.platform);
   const trialStatusScore = item.type === "clinical-trial" ? clinicalTrialStatusWeight(item.status) : 0;
+  const locationMismatchPenalty =
+    item.type === "clinical-trial" && context.location && !relevance.matchFlags.locationPhrase && relevance.locationTokenCoverage < 0.5
+      ? -1.25
+      : 0;
 
   return (
     Number(item.rawScore || 0) +
     yearScore +
     relevance.signalScores.disease +
     relevance.signalScores.location +
+    relevance.signalScores.locationCoverage +
     relevance.signalScores.topic +
     relevance.signalScores.tokenCoverage +
     sourceCredibilityScore +
@@ -80,7 +85,8 @@ function scoreEvidence(item, context) {
     treatmentKeywordScore +
     supplementKeywordScore +
     topicPenalty +
-    diseasePenalty
+    diseasePenalty +
+    locationMismatchPenalty
   );
 }
 
@@ -113,6 +119,15 @@ function shouldKeepEvidence(item, context) {
     );
   }
 
+  if (item.type === "clinical-trial" && context.location) {
+    return (
+      relevance.matchFlags.locationPhrase ||
+      relevance.locationTokenCoverage >= 0.5 ||
+      relevance.matchFlags.diseasePhrase ||
+      relevance.diseaseTokenCoverage >= 0.5
+    );
+  }
+
   return true;
 }
 
@@ -137,12 +152,14 @@ function buildRankedEvidence(item, context) {
 }
 
 function buildRelevanceSignals(item, context) {
-  const text = `${item.title} ${item.snippet} ${item.journal || ""} ${item.location || ""}`.toLowerCase();
+  const locationText = [item.location || "", ...(Array.isArray(item.locations) ? item.locations : [])].join(" ");
+  const text = `${item.title} ${item.snippet} ${item.journal || ""} ${locationText}`.toLowerCase();
   const diseasePhrase = normalizePhrase(context.disease);
   const topicPhrase = normalizePhrase(context.topic);
   const locationPhrase = normalizePhrase(context.location);
   const diseaseTokenCoverage = calculateTokenCoverage(text, context.disease);
   const topicTokenCoverage = calculateTokenCoverage(text, context.topic);
+  const locationTokenCoverage = calculateTokenCoverage(text, context.location);
   const combinedTokenCoverage = calculateTokenCoverage(text, [context.disease, context.topic, context.message].join(" "));
 
   return {
@@ -155,7 +172,7 @@ function buildRelevanceSignals(item, context) {
       topicPhrase: Boolean(topicPhrase && text.includes(topicPhrase)),
       locationPhrase:
         Boolean(locationPhrase && text.includes(locationPhrase)) ||
-        Boolean(context.location && String(item.location || "").toLowerCase().includes(context.location.toLowerCase())),
+        locationTokenCoverage >= 0.5,
       treatmentKeyword: /(treat|therapy|immunotherapy|chemotherapy|surgery|trial|targeted|device|stimulation)/.test(text),
       supplementKeyword: /(vitamin|calcitriol|supplement|dietary|nutrition|omega|magnesium)/.test(text),
     },
@@ -178,7 +195,9 @@ function buildRelevanceSignals(item, context) {
               : 0,
       location: locationPhrase && text.includes(locationPhrase) ? 0.8 : 0,
       tokenCoverage: combinedTokenCoverage * 1.8,
+      locationCoverage: locationTokenCoverage >= 0.75 ? 1 : locationTokenCoverage >= 0.5 ? 0.5 : 0,
     },
+    locationTokenCoverage,
   };
 }
 
@@ -205,7 +224,8 @@ function deriveConfidence(score, relevance, item) {
   if (
     item.type === "clinical-trial" &&
     (relevance.matchFlags.diseasePhrase || relevance.diseaseTokenCoverage >= 0.5) &&
-    (relevance.matchFlags.topicPhrase || relevance.topicTokenCoverage >= 0.2)
+    (relevance.matchFlags.topicPhrase || relevance.topicTokenCoverage >= 0.2) &&
+    (!relevance.locationTokenCoverage || relevance.locationTokenCoverage >= 0.5 || !item.location)
   ) {
     return score >= 4.2 ? "high" : "medium";
   }
@@ -246,6 +266,8 @@ function buildRankingExplanation(relevance, item) {
 
   if (relevance.matchFlags.locationPhrase && item.type === "clinical-trial") {
     reasons.push("location-aligned trial site");
+  } else if (relevance.locationTokenCoverage >= 0.5 && item.type === "clinical-trial") {
+    reasons.push("partial location coverage");
   }
 
   if (item.type === "clinical-trial" && item.status) {
