@@ -105,18 +105,18 @@ function buildConditionOverview(context, evidence) {
 function buildFallbackSummary(context, evidence, greeting) {
   const topPublication = evidence.publications[0];
   const topTrial = evidence.clinicalTrials[0];
-  const publicationSentence = topPublication
-    ? `The strongest publication signal came from "${topPublication.title}" (${topPublication.platform}${topPublication.year ? `, ${topPublication.year}` : ""}).`
-    : "I did not find a strong publication match in the current retrieval run.";
-  const trialSentence = topTrial
-    ? `The most relevant clinical-trial match was "${topTrial.title}" with status ${String(topTrial.status || "UNKNOWN").toLowerCase()}.`
-    : "I did not find a high-confidence clinical-trial match in the current retrieval run.";
+  const publicationSentence = buildPublicationSummarySentence(topPublication);
+  const trialSentence = buildTrialSummarySentence(topTrial);
 
   return `${greeting} ${publicationSentence} ${trialSentence}`;
 }
 
 function buildResearchInsights(publications, context) {
-  if (!publications.length) {
+  const highConfidencePublications = publications.filter(
+    (item) => item.ranking?.confidence === "high" || item.ranking?.confidence === "medium"
+  );
+
+  if (!highConfidencePublications.length) {
     return [
       {
         heading: "Research availability",
@@ -126,15 +126,17 @@ function buildResearchInsights(publications, context) {
     ];
   }
 
-  return publications.slice(0, 3).map((item) => ({
+  return highConfidencePublications.slice(0, 3).map((item) => ({
     heading: item.title,
-    summary: `${formatPublicationLead(item, context)} ${item.snippet || "Abstract details were limited in the source response."}`,
+    summary: `${formatPublicationLead(item, context)} ${item.snippet || "Abstract details were limited in the source response."} Ranking note: ${item.ranking?.explanation || "evidence match available"}.`,
     sourceIds: [item.sourceId],
   }));
 }
 
 function buildClinicalTrialSummary(trials, context) {
-  if (!trials.length) {
+  const visibleTrials = trials.filter((item) => item.ranking?.confidence !== "low");
+
+  if (!visibleTrials.length) {
     return [
       {
         title: "No matching clinical trials surfaced",
@@ -144,10 +146,10 @@ function buildClinicalTrialSummary(trials, context) {
     ];
   }
 
-  return trials.map((item) => ({
+  return visibleTrials.map((item) => ({
     title: item.title,
     status: item.status,
-    summary: `${item.status}${item.location ? ` in ${item.location}` : ""}`,
+    summary: `${item.status}${item.location ? ` in ${item.location}` : ""}. Ranking note: ${item.ranking?.explanation || "trial matched current search context"}.`,
     location: item.location || null,
     contact: item.contact || null,
     sourceIds: [item.sourceId],
@@ -339,6 +341,34 @@ function formatPublicationLead(item, context) {
   }
 
   return `Based on retrieved studies related to ${context.disease || "the condition"}, this publication contributes relevant research context.`;
+}
+
+function buildPublicationSummarySentence(item) {
+  if (!item) {
+    return "I did not find a strong publication match in the current retrieval run.";
+  }
+
+  if (item.ranking?.confidence === "high") {
+    return `The highest-confidence publication match was "${item.title}" (${item.platform}${item.year ? `, ${item.year}` : ""}).`;
+  }
+
+  if (item.ranking?.confidence === "medium") {
+    return `A moderately relevant publication match was "${item.title}" (${item.platform}${item.year ? `, ${item.year}` : ""}).`;
+  }
+
+  return "I found only weak publication matches in the current retrieval run, so the publication evidence should be treated cautiously.";
+}
+
+function buildTrialSummarySentence(item) {
+  if (!item) {
+    return "I did not find a high-confidence clinical-trial match in the current retrieval run.";
+  }
+
+  if (item.ranking?.confidence === "high" || item.ranking?.confidence === "medium") {
+    return `The most relevant clinical-trial match was "${item.title}" with status ${String(item.status || "UNKNOWN").toLowerCase()}.`;
+  }
+
+  return "I found only weak clinical-trial matches in the current retrieval run, so trial relevance should be reviewed manually.";
 }
 
 module.exports = { reasoningService };

@@ -163,6 +163,10 @@ const chatService = {
       sessionId: session.sessionId,
       resolvedContext,
       retrievalMeta: rankedEvidence.meta,
+      rankedEvidence: {
+        publications: rankedEvidence.publications.map(formatRankedEvidenceItem),
+        clinicalTrials: rankedEvidence.clinicalTrials.map(formatRankedEvidenceItem),
+      },
       answer: answer.answer,
       rendered,
       sources: answer.sources,
@@ -310,6 +314,28 @@ function buildSuggestedActions(answer, rendered) {
       enabled: rendered?.status === "ok" && Boolean(answer?.summary),
     },
   ];
+}
+
+function formatRankedEvidenceItem(item) {
+  return {
+    id: item.sourceId || item.id || "",
+    type: item.type,
+    platform: item.platform,
+    title: item.title,
+    year: item.year || null,
+    journal: item.journal || "",
+    url: item.url || "",
+    snippet: item.snippet || "",
+    status: item.status || "",
+    location: item.location || "",
+    score: item.score,
+    ranking: item.ranking || {
+      confidence: "low",
+      explanation: "",
+      matchFlags: {},
+      tokenCoverage: {},
+    },
+  };
 }
 
 module.exports = { chatService };
