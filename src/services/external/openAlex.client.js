@@ -29,7 +29,7 @@ const openAlexClient = {
       title: item.title || "Untitled publication",
       year: item.publication_year || null,
       journal: item.primary_location?.source?.display_name || "",
-      url: item.primary_location?.landing_page_url || item.doi || item.id || "",
+      url: buildOpenAlexUrl(item),
       authors: (item.authorships || []).map((author) => author.author?.display_name).filter(Boolean),
       snippet: buildOpenAlexSnippet(item),
       tags: derivePublicationTags(`${item.title || ""} ${buildOpenAlexSnippet(item)}`),
@@ -37,6 +37,28 @@ const openAlexClient = {
     }));
   },
 };
+
+function buildOpenAlexUrl(item) {
+  const landingPage = item.primary_location?.landing_page_url;
+  const doi = normalizeDoiUrl(item.doi);
+  const openAlexId = typeof item.id === "string" && item.id.startsWith("http") ? item.id : "";
+
+  return landingPage || doi || openAlexId || "";
+}
+
+function normalizeDoiUrl(value) {
+  const doi = String(value || "").trim();
+
+  if (!doi) {
+    return "";
+  }
+
+  if (/^https?:\/\//i.test(doi)) {
+    return doi;
+  }
+
+  return `https://doi.org/${doi.replace(/^doi:\s*/i, "")}`;
+}
 
 function buildOpenAlexSnippet(item) {
   const abstract = item.abstract_inverted_index
